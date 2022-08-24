@@ -11,6 +11,7 @@ type Flow struct {
 	output    chan interface{}
 	buffer    *ring.Ring
 	cursor    *ring.Ring
+	isClosed  bool
 }
 
 func NewFlow(options *Options) *Flow {
@@ -21,6 +22,7 @@ func NewFlow(options *Options) *Flow {
 		taskQueue: make(chan *Task, options.BufferSize),
 		output:    make(chan interface{}, options.BufferSize),
 		buffer:    ring.New(options.BufferSize),
+		isClosed:  false,
 	}
 
 	// Setup cursor
@@ -70,7 +72,9 @@ func (f *Flow) startReceiver() {
 		f.buffer.Value = task
 		f.buffer = f.buffer.Next()
 
-		f.taskQueue <- task
+		if !f.isClosed {
+			f.taskQueue <- task
+		}
 	}
 }
 
@@ -100,10 +104,20 @@ func (f *Flow) startPublisher() {
 }
 
 func (f *Flow) done(data interface{}) {
+
+	if f.isClosed {
+		return
+	}
+
 	f.output <- data
 }
 
 func (f *Flow) Push(data interface{}) {
+
+	if f.isClosed {
+		return
+	}
+
 	f.input <- data
 }
 
@@ -112,6 +126,7 @@ func (f *Flow) Output() chan interface{} {
 }
 
 func (f *Flow) Close() {
+	f.isClosed = true
 	close(f.input)
 	close(f.taskQueue)
 	close(f.output)
